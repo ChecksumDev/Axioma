@@ -1,5 +1,7 @@
-<img src="https://i.ibb.co/W20H43D/11zon-cropped.png" alt="logo" style="width:200px;height:auto;margin:auto;display:block"> 
-<h1 align="center" style="margin-top:10px">Axioma</h1>
+<div id="logo" align="center">
+<img src="https://i.ibb.co/W20H43D/11zon-cropped.png" alt="logo" style="width:250px;height:auto"> 
+<p align="center" style="font-size:30px">Axioma</p>
+</div>
 
 ## About me
 
