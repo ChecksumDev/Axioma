@@ -4,7 +4,7 @@ from math import ceil
 from nextcord.ext.commands.context import Context
 
 import config
-from misc.downloader import Downloader
+from utils.downloader import Downloader
 from nextcord.embeds import Embed
 from nextcord.ext import commands
 from nextcord.player import FFmpegPCMAudio, PCMVolumeTransformer
