@@ -37,9 +37,6 @@ def calculate_trust_score(user: Member):
     """
     trust_score = 0
 
-    if user.bot:
-        return -1
-
     if user.avatar is not None and user.avatar != "":
         trust_score += 100
         if user.avatar.is_animated():
