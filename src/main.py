@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 
-from nextcord.activity import Game
+from nextcord.activity import Activity
 from nextcord.embeds import Embed
-from nextcord.enums import Status
+from nextcord.enums import ActivityType, Status
 from nextcord.ext import commands
+from nextcord.ext.commands.errors import (BadArgument, CheckFailure,
+                                          CommandError, CommandNotFound,
+                                          CommandOnCooldown, DisabledCommand,
+                                          MissingRequiredArgument,
+                                          NoPrivateMessage)
 from nextcord.flags import Intents
 from nextcord.guild import Guild
 from nextcord.member import Member
@@ -31,58 +36,66 @@ class Client(commands.AutoShardedBot):
 
     async def on_ready(self):
         print(f'[Axi] Logged on as {self.user} (ID: {self.user.id})')
+        print(f'[Axi] Ready to serve {len(self.guilds)} guilds and {len(self.users)} users')
+        await self.change_presence(activity=Activity(type=ActivityType.listening, name="$help | created by checksum"), status=Status.do_not_disturb)
+
+    async def on_guild_join(self, guild: Guild):
+        await init_guild(self, guild)
+
+    async def on_guild_remove(self, guild: Guild):
+        self.db.guilds.delete_one({'id': guild.id})
+
+    async def on_member_join(self, member: Member):
+        pass
+
+    async def on_member_remove(self, member: Member):
+        pass
+
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        await self.process_commands(message)
+
+    async def on_shard_ready(self, shard_id):
+        print(f'[Axi] Shard {shard_id} ready')
+
+    async def on_command_error(self, ctx, error):
+        embed = Embed(title="Error", color=0xFF0000)
+        embed.set_thumbnail(url=self.user.display_avatar.url)
+        embed.set_footer(text=f"{ctx.author} | {ctx.guild}")
+        if isinstance(error, CommandNotFound):
+            return
+        if isinstance(error, MissingRequiredArgument):
+            embed.description = f"Missing required argument {error.param}"
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, BadArgument):
+            embed.description = f'{ctx.author.mention}, you provided an invalid argument.'
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, CommandOnCooldown):
+            embed.description = f'{ctx.author.mention}, you are on cooldown for {error.retry_after:.2f} seconds.'
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, CheckFailure):
+            embed.description = f'{ctx.author.mention}, you do not have the required permissions.'
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, CommandError):
+            embed.description = f'{ctx.author.mention}, {error}'
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, NoPrivateMessage):
+            embed.description = f'{ctx.author.mention}, this command cannot be used in private messages.'
+            await ctx.send(embed=embed)
+            return
+        if isinstance(error, DisabledCommand):
+            embed.description = f'{ctx.author.mention}, this command has been disabled.'
+            await ctx.send(embed=embed)
+            return
 
 
 client = Client(intents=Intents.all())
-
-# Connect to MongoDB
-db = client.db.axi  # Connect to the database
-cursor = db.meta  # Connect to the collection
-
-
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user.name}')
-    await client.change_presence(status=Status.do_not_disturb, activity=Game("$help / checksum is my creator."))
-
-    for guild in client.guilds:
-        isInitilized = cursor.find_one({"server": guild.id})
-        if isInitilized is None:
-            init_guild(guild, cursor)
-
-@client.event
-async def on_member_join(member: Member):
-    server = cursor.find_one({"server": member.guild.id})
-
-    if server is None:
-        return print(f'{member.guild.name} has no server settings, aborting on_member_join')
-
-    if server["modules"]["verification"] == True:
-        print(f'{member.name} has joined {member.guild.name}, waiting for verification')
-
-    if server["modules"]["welcome"] == True:
-        await member.send(server.settings.welcome_message)
-
-
-@client.event
-async def on_member_remove(member: Member):
-    server = cursor.find_one({"server": member.guild.id})
-
-    if server is None:
-        print(f'{member.guild.name} has no server settings, aborting on_member_join')
-        return
-
-    if server["modules"]["verification"] == True:
-        print(f'{member.name} has left {member.guild.name}, deleting user settings')
-
-
-@client.event
-async def on_guild_join(guild: Guild):
-    init_guild(guild)
-
-    print(f'{client.user.name} has been added to {guild.name}, adding to database')
-    embed = Embed(title="Hey there!",
-                  description=f'Thank you for adding me to {guild.name}!\nAll of my features are disabled by default, to configure me, run the {cursor.find({"server": guild.id}).next()["settings"]["prefix"]}config command.', color=0x800080)
-    await guild.owner.send(embed=embed)
+db = client.db.axi
 
 client.run(config.token)

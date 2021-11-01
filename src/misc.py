@@ -2,7 +2,7 @@ from typing import Collection
 from nextcord.member import Member
 from datetime import datetime as dt
 from nextcord.guild import Guild
-from pymongo import MongoClient, collection
+from pymongo import MongoClient
 from pymongo.database import Database
 import config
 
@@ -95,8 +95,39 @@ async def get_channel_by_name(guild, name):
     return None
 
 
-def init_guild(guild: Guild, cursor: collection.Collection):
-    cursor.insert_one({
-        'server': guild.id,
+def init_guild(guild: Guild, db: Database):
+    db.config.insert_one({
+        'id': guild.id,
         'prefix': '$',
+        'settings': {
+            'welcome': {
+                'enabled': False,
+                'message': None,
+                'channel': None,
+                'dm': False,
+            },
+            'verification': {
+                'enabled': False,
+                'channel': None,
+                'role': None
+            },
+            'leave': {
+                'enabled': False,
+                'message': None,
+                'channel': None,
+                'role': None,
+            },
+            'modlog': {
+                'enabled': False,
+                'channel': None,
+            },
+            'modmail': { # TODO: Add more modmail settings
+                'enabled': False,
+                'channel': None,
+            },
+            'autorole': {
+                'enabled': False,
+                'roles': [],
+            },
+        }
     })

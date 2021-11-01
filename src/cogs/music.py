@@ -2,6 +2,7 @@ from asyncio import run_coroutine_threadsafe
 from math import ceil
 
 from nextcord.ext.commands.context import Context
+from nextcord.ext.commands.errors import CommandError
 
 import config
 from utils.downloader import Downloader
@@ -18,7 +19,7 @@ async def audio_playing(ctx: Context):
     if client and client.channel and client.source:
         return True
     else:
-        raise commands.CommandError('Not currently playing any audio.')
+        raise CommandError('Not currently playing any audio.')
 
 
 async def in_voice_channel(ctx: Context):
@@ -27,7 +28,7 @@ async def in_voice_channel(ctx: Context):
     if voice and bot_voice and voice.channel and bot_voice.channel and voice.channel == bot_voice.channel:
         return True
     else:
-        raise commands.CommandError(
+        raise CommandError(
             'You need to be in the channel to do that.')
 
 
@@ -38,7 +39,7 @@ async def is_audio_requester(ctx: Context):
     if permissions.administrator or storage.is_requester(ctx.author):
         return True
     else:
-        raise commands.CommandError(
+        raise CommandError(
             'You need to be the song requester to do that.')
 
 
@@ -63,13 +64,13 @@ class MusicCommands(commands.Cog, name='Music'):
         storage.skip_votes.add(member)
         users_in_channel = len(
             [member for member in channel.members if not member.bot])
-        if float(len(storage.skip_votes))/users_in_channel >= self.config.music.get('vote_skip_ratio'):
+        if float(len(storage.skip_votes))/users_in_channel >= int(self.config.music.get('vote_skip_ratio')):
             channel.guild.voice_client.stop()
 
     def _play_song(self, client, storage, song):
         storage.now_playing = song
         storage.skip_votes = set()
-        source = PCMVolumeTransformer(FFmpegPCMAudio(
+        self.source = PCMVolumeTransformer(FFmpegPCMAudio(
             song.stream_url, before_options=FFMPEG_BEFORE_OPTS), volume=storage.volume)
 
         def after_playing(err):
@@ -78,7 +79,7 @@ class MusicCommands(commands.Cog, name='Music'):
                 self._play_song(client, storage, next_song)
             else:
                 run_coroutine_threadsafe(client.disconnect(), self.bot.loop)
-        client.play(source, after=after_playing)
+        client.play(self.source, after=after_playing)
 
     async def _add_reaction_controls(self, message):
         CONTROLS = ['⏮', '⏯', '⏭']
@@ -113,7 +114,7 @@ class MusicCommands(commands.Cog, name='Music'):
             storage.now_playing = None
             await ctx.send('Left the voice channel.')
         else:
-            raise commands.CommandError('Not in a voice channel.')
+            raise CommandError('Not in a voice channel.')
 
     @commands.command(name='resume', aliases=['pause'], brief='Resumes or pauses the current song.')
     @commands.guild_only()
@@ -124,18 +125,23 @@ class MusicCommands(commands.Cog, name='Music'):
 
     @commands.command(name='volume', aliases=['vol'], usage='<volume>', brief='Sets the volume of the music.')
     @commands.guild_only()
-    async def volume(self, ctx, volume):
+    async def volume(self, ctx, volume: int):
         storage = self._get_storage(ctx.guild)
         if volume < 0:
             volume = 0
-        max_vol = self.config.music.get('max_volume')
+        max_vol = int(self.config.music.get('max_volume'))
         if max_vol > -1:
             if volume > max_vol:
                 volume = max_vol
-        client = ctx.guild.voice_client
         storage.volume = float(volume)/100.0
-        client.source.volume = storage.volume
-        await ctx.send(f"Set the volume to {volume}%.")
+        if not hasattr(self, "source"):
+            raise CommandError('Not currently playing any audio.')
+
+        self.source.volume = storage.volume
+
+        embed = Embed(title='Volume',
+                      description=f'Volume set to {volume}%.', color=0x800080)
+        await ctx.send(embed=embed)
 
     @commands.command(name="skip", aliases=['s'], brief='Skip the current song.')
     @commands.guild_only()
@@ -144,16 +150,19 @@ class MusicCommands(commands.Cog, name='Music'):
         client = ctx.guild.voice_client
         if ctx.channel.permissions_for(ctx.author).administrator or storage.is_requester(ctx.author):
             client.stop()
+            await ctx.send('Skipped the current song.')
         elif self.config.music.get('vote_skip'):
             channel = client.channel
             self._vote_skip(channel, ctx.author)
             users_in_channel = len(
                 [member for member in channel.members if not member.bot])
-            required_votes = ceil(self.config.music.get(
-                'vote_skip_ratio')*users_in_channel)
+            required_votes = ceil(int(self.config.music.get('vote_skip_ratio'))*users_in_channel)
             await ctx.send(f"{ctx.author.mention} voted to skip ({len(storage.skip_votes)}/{required_votes} votes)")
+            if len(storage.skip_votes) >= required_votes:
+                client.stop()
+                await ctx.send('Skipped the current song.')
         else:
-            raise commands.CommandError('Sorry, vote skipping is disabled.')
+            raise CommandError('You need to be the song requester to do that.')
 
     @commands.command(name='np', aliases=['nowplaying', 'currentsong', 'current'], brief='Shows the currently playing song.')
     @commands.guild_only()
@@ -186,7 +195,7 @@ class MusicCommands(commands.Cog, name='Music'):
             storage.playlist.insert(new_index-1, song)
             await ctx.send(self._queue_text(storage.playlist))
         else:
-            raise commands.CommandError('You must use a valid index.')
+            raise CommandError('You must use a valid index.')
 
     @commands.command(name='play', aliases=['p', 'search'], usage='<query>')
     @commands.guild_only()
@@ -207,16 +216,13 @@ class MusicCommands(commands.Cog, name='Music'):
             try:
                 video = Downloader(url, ctx.author)
             except DownloadError as e:
-                embed = Embed(
-                    title='Error', description=f"Error downloading video: {e}", color=8388736)
-                await ctx.send(embed=embed)
-                return
+                raise CommandError(f"Error downloading video: {e}")
             client = await channel.connect()
             self._play_song(client, storage, video)
             message = await ctx.send('', embed=video.get_embed())
             await self._add_reaction_controls(message)
         else:
-            raise commands.CommandError(
+            raise CommandError(
                 'You need to be in a voice channel to do that.')
 
     async def on_reaction_add(self, reaction, user):
@@ -243,8 +249,8 @@ class MusicCommands(commands.Cog, name='Music'):
                     channel = message.channel
                     users_in_channel = len(
                         [member for member in voice_channel.members if not member.bot])
-                    required_votes = ceil(self.config.music.get(
-                        'vote_skip_ratio')*users_in_channel)
+                    required_votes = ceil(int(self.config.music.get(
+                        'vote_skip_ratio'))*users_in_channel)
                     await channel.send(f"{user.mention} voted to skip. {required_votes} votes required.")
 
 

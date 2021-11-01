@@ -13,8 +13,6 @@ YTDL_OPTS = {
 
 
 class Downloader:
-    """Class containing information about a particular video."""
-
     def __init__(self, url_or_search, requested_by):
         """Plays audio from (or searches for) a URL."""
         with YoutubeDL(YTDL_OPTS) as ydl:
