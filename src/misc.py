@@ -1,18 +1,12 @@
-from typing import Collection
 from nextcord.member import Member
 from datetime import datetime as dt
 from nextcord.guild import Guild
 from pymongo import MongoClient
 from pymongo.database import Database
+from pymongo.collection import Collection
 import config
 
 print("[Misc] Initializing MongoDB connection...")
-
-mongo = MongoClient(
-    f"mongodb+srv://{config.mongo.get('username')}:{config.mongo.get('password')}@{config.mongo.get('host')}/{config.mongo.get('db')}?retryWrites=true&w=majority")
-db = mongo.authenticator  # Connect to the database
-servers_cursor = db.servers  # Connect to the collection
-users_cursor = db.users  # Connect to the collection
 
 
 class TrustScore:
@@ -96,38 +90,70 @@ async def get_channel_by_name(guild, name):
 
 
 def init_guild(guild: Guild, db: Database):
-    db.config.insert_one({
-        'id': guild.id,
-        'prefix': '$',
-        'settings': {
-            'welcome': {
-                'enabled': False,
-                'message': None,
-                'channel': None,
-                'dm': False,
+    guild_data = db.guilds.find_one({"id": guild.id})
+    if guild_data is None:
+        db.guilds.insert_one({
+            'id': guild.id,
+            'prefix': '$',
+            'settings': {
+
+                'welcome': {
+                    'enabled': False,
+                    'message': None,
+                    'channel': None,
+                    'dm': False,
+                },
+                'verification': {
+                    'enabled': False,
+                    'channel': None,
+                    'role': None
+                },
+                'leave': {
+                    'enabled': False,
+                    'message': None,
+                    'channel': None,
+                    'role': None,
+                },
+                'modlog': {
+                    'enabled': False,
+                    'channel': None,
+                },
+                'modmail': {  # TODO: Add more modmail settings
+                    'enabled': False,
+                    'channel': None,
+                },
+                'autorole': {
+                    'enabled': False,
+                    'roles': [],
+                },
+                'music': {
+                    'max_volume': 100,
+                    'current_song': None,
+                    'max_queue_size': 20,
+                    'vote_skip': False,
+                    'vote_skip_percentage': 50,
+                    'vote_skip_time': 30,
+                    'shuffle': False,
+                    'repeat': False,
+                    'dj_role': None,
+                }
             },
-            'verification': {
-                'enabled': False,
-                'channel': None,
-                'role': None
-            },
-            'leave': {
-                'enabled': False,
-                'message': None,
-                'channel': None,
-                'role': None,
-            },
-            'modlog': {
-                'enabled': False,
-                'channel': None,
-            },
-            'modmail': { # TODO: Add more modmail settings
-                'enabled': False,
-                'channel': None,
-            },
-            'autorole': {
-                'enabled': False,
-                'roles': [],
-            },
-        }
-    })
+
+            'storage': {
+                'moderation': {
+                    'cases': []
+                },
+                'music': {
+                    'volume': 0.5,
+                    'current_song': None,
+                    'skip_votes': [],
+                    'queue': [],
+                }
+            }
+        })
+        
+        # TODO: Add more guild settings
+        
+        print(f"[Axi] Created guild {guild.name}")
+    else:
+        print(f"[Axi] Guild {guild.name} already exists")

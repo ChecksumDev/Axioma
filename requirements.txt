@@ -1,0 +1,5 @@
+aiohttp==3.7.4.post0
+nextcord==2.0.0a3
+pymongo==3.12.1
+pymongo[srv]==3.12.1
+youtube_dl==2021.6.6

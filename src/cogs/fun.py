@@ -13,7 +13,7 @@ class FunCommands(commands.Cog, name="Fun"):
 
     def __init__(self, bot: Bot, db: Database):
         self.bot = bot
-        self.db = db.axi
+        self.db = db
 
     @commands.command(name="roll", brief="Rolls a die.")
     async def die(self, ctx: commands.Context, *, args: str = None):

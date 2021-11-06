@@ -1,33 +1,23 @@
+from nextcord.ext.commands.bot import Bot
 from pymongo.database import Database
-import config
 import misc
-from nextcord import utils
-from nextcord.client import Client
 from nextcord.embeds import Embed
 from nextcord.ext import commands
 from nextcord.ext.commands.errors import MemberNotFound
 from nextcord.member import Member
 from nextcord.user import ClientUser
-from pymongo import MongoClient
-
-mongo = MongoClient(
-    f"mongodb+srv://{config.mongo.get('username')}:{config.mongo.get('password')}@{config.mongo.get('host')}/{config.mongo.get('db')}?retryWrites=true&w=majority")
-db = mongo.authenticator
-servers_cursor = db.servers
-users_cursor = db.users
 
 
 class GeneralCommands(commands.Cog):
     """Miscellaneous Commands"""
 
-    def __init__(self: ClientUser, client: commands.Bot, db: Database):
+    def __init__(self: ClientUser, client: Bot, db: Database):
         self.client = client
-        self.db = db.axi
+        self.db = db
 
     @commands.command(name="ping", description="Pong!", brief="Pong!", aliases=["pong"], category="General")
     async def ping(self, ctx: commands.Context):
-        embed = Embed(
-            title="Pong!", description=f"The client latency is around {round(self.client.latency * 1000)}ms.", color=0x800080)
+        embed = Embed(title="Pong!", description=f"The client latency is around {round(self.client.latency * 1000)}ms.", color=0x800080)
         await ctx.send(embed=embed)
 
     @commands.command(name="serverinfo", description="Get information about the server.", brief="Get information about the server.", aliases=["server", "guildinfo", "guild"], category="General")
@@ -44,7 +34,7 @@ class GeneralCommands(commands.Cog):
         embed.add_field(name="Roles", value=f"{len(server.roles)}")
         embed.add_field(name="Channels", value=f"{len(server.channels)}")
         embed.add_field(name="Created At",
-                        value=f"{server.created_at.strftime('%d/%m/%Y')}")
+                        value=f"{server.created_at.strftime('%d/%m/%Y @ %H:%M:%S')}")
 
         if server.icon:
             embed.set_thumbnail(url=server.icon.url)
@@ -93,15 +83,19 @@ class GeneralCommands(commands.Cog):
                 name="Status", value=f"{member.status.name}", inline=False)
 
         trustscore = misc.calculate_trust_score(member)
-        embed.add_field(name="Trust Score", value=f"{trustscore}", inline=False)
+        embed.add_field(name="Trust Score",
+                        value=f"{trustscore}", inline=False)
 
         embed.set_footer(
             text=f"ID: {member.id} | Account Created At: {member.created_at.strftime('%d/%m/%Y @ %H:%M:%S')}")
         await ctx.send(embed=embed)
 
     @commands.command(name="trustscore", description="Calculate the trustscore of a user.", brief="Calculate the trustscore of a user.", aliases=["ts"], category="General")
-    async def calc_trustscore(self, ctx: commands.Context, *, member: Member):
+    async def calc_trustscore(self, ctx: commands.Context, *, member: Member = None):
         try:
+            if not member:
+                member = ctx.author
+
             score = misc.calculate_trust_score(member)
 
             # create a purple embed with the trustscore, avatar, name and discriminator

@@ -1,8 +1,10 @@
 from asyncio import run_coroutine_threadsafe
 from math import ceil
+from nextcord.ext.commands.bot import Bot
 
 from nextcord.ext.commands.context import Context
 from nextcord.ext.commands.errors import CommandError
+from pymongo.database import Database
 
 import config
 from utils.downloader import Downloader
@@ -32,52 +34,45 @@ async def in_voice_channel(ctx: Context):
             'You need to be in the channel to do that.')
 
 
-async def is_audio_requester(ctx: Context):
-    music = ctx.bot.get_cog('Music')
-    storage = music.get_storage(ctx.guild)
-    permissions = ctx.channel.permissions_for(ctx.author)
-    if permissions.administrator or storage.is_requester(ctx.author):
-        return True
-    else:
-        raise CommandError(
-            'You need to be the song requester to do that.')
-
-
 class MusicCommands(commands.Cog, name='Music'):
-    def __init__(self, bot, db, config):
+    def __init__(self, bot: Bot, db: Database, config):
         self.bot = bot
         self.config = config
-        self.db = db.axi
-        self.storage = {
-        }
+        self.db = db
         self.bot.add_listener(self.on_reaction_add, 'on_reaction_add')
 
-    def _get_storage(self, guild):
-        if guild.id in self.storage:
-            return self.storage[guild.id]
-        else:
-            self.storage[guild.id] = State()
-            return self.storage[guild.id]
-
     def _vote_skip(self, channel, member):
-        storage = self._get_storage(channel.guild)
-        storage.skip_votes.add(member)
+        self.db.guilds.update_one({'id': channel.guild.id}, {
+            '$push': {'storage.music.skip_votes': member.id}})
+        votes = self.db.guilds.find_one({'id': channel.guild.id})[
+            'storage']['music']['skip_votes']
+
         users_in_channel = len(
             [member for member in channel.members if not member.bot])
-        if float(len(storage.skip_votes))/users_in_channel >= int(self.config.music.get('vote_skip_ratio')):
+        if float(len(votes))/users_in_channel >= int(self.db.guilds.find_one({'id': channel.guild.id})['settings']['music']['vote_skip_percentage']):
             channel.guild.voice_client.stop()
 
-    def _play_song(self, client, storage, song):
-        storage.now_playing = song
-        storage.skip_votes = set()
+    def _play_song(self, client, song):
+        self.queue = self.db.guilds.find_one({'id': client.guild.id})[
+            'storage']['music']['queue']
+    
+        self.db.guilds.update_one({'id': client.guild.id}, {
+            '$push': {'storage.music.current_song': song}})
+
         self.source = PCMVolumeTransformer(FFmpegPCMAudio(
-            song.stream_url, before_options=FFMPEG_BEFORE_OPTS), volume=storage.volume)
+            song.stream_url, before_options=FFMPEG_BEFORE_OPTS), volume=self.db.guilds.find_one({'id': client.guild.id})['settings']['music']['volume'])
 
         def after_playing(err):
-            if len(storage.playlist) > 0:
-                next_song = storage.playlist.pop(0)
-                self._play_song(client, storage, next_song)
+            if len(self.queue) > 0:
+                self.db.guilds.update_one({'id': client.guild.id}, {
+                    '$pop': {'storage.music.queue': 1}})
+                next_song = self.db.guilds.find_one({'id': client.guild.id})[
+                    'storage']['music']['queue'][0]
+
+                self._play_song(client, next_song)
             else:
+                self.db.guilds.update_one({'id': client.guild.id}, {
+                    '$set': {'storage.music.current_song': None, 'storage.music.queue': [], 'storage.music.skip_votes': []}})
                 run_coroutine_threadsafe(client.disconnect(), self.bot.loop)
         client.play(self.source, after=after_playing)
 
@@ -107,12 +102,12 @@ class MusicCommands(commands.Cog, name='Music'):
     @commands.has_permissions(manage_guild=True)
     async def leave(self, ctx):
         client = ctx.guild.voice_client
-        storage = self._get_storage(ctx.guild)
         if client and client.channel:
             await client.disconnect()
-            storage.playlist = []
-            storage.now_playing = None
-            await ctx.send('Left the voice channel.')
+            self.db.guilds.update_one({'id': ctx.guild.id}, {
+                '$set': {'storage.music.current_song': None, 'storage.music.queue': [], 'storage.music.skip_votes': []}})
+
+            await ctx.send('Disconnected from the voice channel.')
         else:
             raise CommandError('Not in a voice channel.')
 
@@ -126,18 +121,23 @@ class MusicCommands(commands.Cog, name='Music'):
     @commands.command(name='volume', aliases=['vol'], usage='<volume>', brief='Sets the volume of the music.')
     @commands.guild_only()
     async def volume(self, ctx, volume: int):
-        storage = self._get_storage(ctx.guild)
         if volume < 0:
             volume = 0
-        max_vol = int(self.config.music.get('max_volume'))
+        max_vol = self.db.guilds.find_one({'id': ctx.guild.id})[
+            'storage']['music']['volume']
         if max_vol > -1:
             if volume > max_vol:
                 volume = max_vol
-        storage.volume = float(volume)/100.0
-        if not hasattr(self, "source"):
-            raise CommandError('Not currently playing any audio.')
 
-        self.source.volume = storage.volume
+        client = ctx.guild.voice_client
+
+        if client and client.channel:
+            self.db.guilds.update_one({'id': ctx.guild.id}, {
+                '$set': {'storage.music.volume': volume}})
+            client.source.volume = float(volume)/100.0
+            await ctx.send(f'Set the volume to {volume}%.')
+        else:
+            raise CommandError('Not in a voice channel.')
 
         embed = Embed(title='Volume',
                       description=f'Volume set to {volume}%.', color=0x800080)
@@ -146,69 +146,82 @@ class MusicCommands(commands.Cog, name='Music'):
     @commands.command(name="skip", aliases=['s'], brief='Skip the current song.')
     @commands.guild_only()
     async def skip(self, ctx):
-        storage = self._get_storage(ctx.guild)
         client = ctx.guild.voice_client
-        if ctx.channel.permissions_for(ctx.author).administrator or storage.is_requester(ctx.author):
+        if ctx.channel.permissions_for(ctx.author).administrator:
             client.stop()
             await ctx.send('Skipped the current song.')
-        elif self.config.music.get('vote_skip'):
+        elif self.db.guilds.find_one({'id': ctx.guild.id})['storage']['music']['current_song']:
             channel = client.channel
             self._vote_skip(channel, ctx.author)
             users_in_channel = len(
                 [member for member in channel.members if not member.bot])
-            required_votes = ceil(int(self.config.music.get('vote_skip_ratio'))*users_in_channel)
-            await ctx.send(f"{ctx.author.mention} voted to skip ({len(storage.skip_votes)}/{required_votes} votes)")
-            if len(storage.skip_votes) >= required_votes:
-                client.stop()
+
+            required_votes = ceil(int(self.db.guilds.find_one({'id': channel.guild.id})[
+                                  'settings']['music']['vote_skip_percentage']) * users_in_channel)
+            await ctx.send(f"{ctx.author.mention} voted to skip ({len(self.db.guilds.find_one({'id': ctx.guild.id})['storage']['music']['skip_votes'])}/{required_votes})")
+            if len(self.db.guilds.find_one({'id': ctx.guild.id})['storage']['music']['skip_votes']) >= required_votes:
+                self._vote_skip()
                 await ctx.send('Skipped the current song.')
         else:
             raise CommandError('You need to be the song requester to do that.')
 
     @commands.command(name='np', aliases=['nowplaying', 'currentsong', 'current'], brief='Shows the currently playing song.')
     @commands.guild_only()
-    async def nowplaying(self, ctx):
-        storage = self._get_storage(ctx.guild)
-        message = await ctx.send('', embed=storage.now_playing.get_embed())
-        await self._add_reaction_controls(message)
+    async def now_playing(self, ctx):
+        current_song = self.db.guilds.find_one({'id': ctx.guild.id})[
+            'storage']['music']['current_song']
+        if current_song:
+            embed = Embed(title='Now Playing',
+                          description=current_song['title'], color=0x800080)
+            await ctx.send(embed=embed)
+        else:
+            raise CommandError('No song is currently playing.')
 
     @commands.command(name='queue', aliases=['q'], brief='Shows the current queue.')
     @commands.guild_only()
     async def queue(self, ctx):
-        storage = self._get_storage(ctx.guild)
-        await ctx.send(embed=self._queue_embed(storage.playlist))
+        queue = self.db.guilds.find_one({'id': ctx.guild.id})[
+            'storage']['music']['queue']
+        embed = self._queue_embed(queue)
+        await ctx.send(embed=embed)
 
     @commands.command(name='clear', aliases=['clr', 'cq'], brief='Clears the queue.')
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
-    async def clearqueue(self, ctx):
-        storage = self._get_storage(ctx.guild)
-        storage.playlist = []
-        ctx.send('Cleared the play queue.')
+    async def clear_queue(self, ctx):
+        self.db.guilds.update_one({'id': ctx.guild.id}, {
+            '$set': {'storage.music.queue': []}})
+        await ctx.send('Cleared the queue.')
 
-    @commands.command(name='jump', aliases=['jq'])
+    @commands.command(name='jump', aliases=['jq'], usage='<song number>', brief='Jumps to a song in the queue.')
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
-    async def jumpqueue(self, ctx, song, new_index):
-        storage = self._get_storage(ctx.guild)
-        if 1 <= song <= len(storage.playlist) and 1 <= new_index:
-            song = storage.playlist.pop(song-1)
-            storage.playlist.insert(new_index-1, song)
-            await ctx.send(self._queue_text(storage.playlist))
+    async def jump_queue(self, ctx, song_number: int):
+        queue = self.db.guilds.find_one({'id': ctx.guild.id})[
+            'storage']['music']['queue']
+        if song_number > len(queue):
+            raise CommandError('Song number is too high.')
+        elif song_number < 1:
+            raise CommandError('Song number is too low.')
         else:
-            raise CommandError('You must use a valid index.')
+            self.db.guilds.update_one({'id': ctx.guild.id}, {
+                '$set': {'storage.music.current_song': queue[song_number - 1]}})
+            self._play_song(ctx.guild.voice_client, queue[song_number - 1])
+            await ctx.send(f'Jumped to song {song_number}.')
 
     @commands.command(name='play', aliases=['p', 'search'], usage='<query>')
     @commands.guild_only()
     async def play(self, ctx, *, url):
         client = ctx.guild.voice_client
-        storage = self._get_storage(ctx.guild)
         if client and client.channel:
             try:
                 video = Downloader(url, ctx.author)
+                print(video._get_info())
             except DownloadError as e:
                 await ctx.send(f"Error downloading video: {e}")
                 return
-            storage.playlist.append(video)
+            self.db.guilds.update_one({'id': ctx.guild.id}, {
+                '$set': {'storage.music.current_song': video}})
             message = await ctx.send('Added to queue.', embed=video.get_embed())
             await self._add_reaction_controls(message)
         elif ctx.author.voice is not None and ctx.author.voice.channel is not None:
@@ -218,7 +231,8 @@ class MusicCommands(commands.Cog, name='Music'):
             except DownloadError as e:
                 raise CommandError(f"Error downloading video: {e}")
             client = await channel.connect()
-            self._play_song(client, storage, video)
+            print(video.video)
+            self._play_song(client, video)
             message = await ctx.send('', embed=video.get_embed())
             await self._add_reaction_controls(message)
         else:
@@ -226,42 +240,48 @@ class MusicCommands(commands.Cog, name='Music'):
                 'You need to be in a voice channel to do that.')
 
     async def on_reaction_add(self, reaction, user):
-        message = reaction.message
-        if user != self.bot.user and message.author == self.bot.user:
-            await message.remove_reaction(reaction, user)
-            if message.guild and message.guild.voice_client:
-                user_in_channel = user.voice and user.voice.channel and user.voice.channel == message.guild.voice_client.channel
-                permissions = message.channel.permissions_for(user)
-                guild = message.guild
-                storage = self._get_storage(guild)
-                if permissions.administrator or user_in_channel and storage.is_requester(user):
-                    client = message.guild.voice_client
-                    if reaction.emoji == '⏯':
-                        self._pause_audio(client)
-                    elif reaction.emoji == '⏭':
-                        client.stop()
-                    elif reaction.emoji == '⏮':
-                        storage.playlist.insert(0, storage.now_playing)
-                        client.stop()
-                elif reaction.emoji == '⏭' and self.config.music.get('vote_skip') and user_in_channel and message.guild.voice_client and message.guild.voice_client.channel:
-                    voice_channel = message.guild.voice_client.channel
-                    self._vote_skip(voice_channel, user)
-                    channel = message.channel
-                    users_in_channel = len(
-                        [member for member in voice_channel.members if not member.bot])
-                    required_votes = ceil(int(self.config.music.get(
-                        'vote_skip_ratio'))*users_in_channel)
-                    await channel.send(f"{user.mention} voted to skip. {required_votes} votes required.")
-
-
-class State:
-    def __init__(self):
-        self.volume = 0.5
-        self.playlist = []
-        self.skip_votes = set()
-        self.now_playing = None
-
-    def is_requester(self, user): return self.now_playing.requested_by == user
+        if reaction.message.id in self.reaction_controls:
+            if reaction.emoji == '⏯':
+                if user.id == reaction.message.author.id:
+                    if self.db.guilds.find_one({'id': reaction.message.guild.id})['storage']['music']['current_song']:
+                        if reaction.message.guild.voice_client.is_playing():
+                            reaction.message.guild.voice_client.pause()
+                            await reaction.message.edit(embed=Embed(title='Paused', color=0x800080))
+                        else:
+                            reaction.message.guild.voice_client.resume()
+                            await reaction.message.edit(embed=Embed(title='Resumed', color=0x800080))
+                    else:
+                        raise CommandError('No song is currently playing.')
+                else:
+                    raise CommandError(
+                        'You need to be the song requester to do that.')
+            elif reaction.emoji == '⏭':
+                if user.id == reaction.message.author.id:
+                    if self.db.guilds.find_one({'id': reaction.message.guild.id})['storage']['music']['current_song']:
+                        if reaction.message.guild.voice_client.is_playing():
+                            reaction.message.guild.voice_client.stop()
+                            await reaction.message.edit(embed=Embed(title='Stopped', color=0x800080))
+                        else:
+                            raise CommandError('No song is currently playing.')
+                    else:
+                        raise CommandError('No song is currently playing.')
+                else:
+                    raise CommandError(
+                        'You need to be the song requester to do that.')
+            elif reaction.emoji == '⏯':
+                if user.id == reaction.message.author.id:
+                    if self.db.guilds.find_one({'id': reaction.message.guild.id})['storage']['music']['current_song']:
+                        if reaction.message.guild.voice_client.is_playing():
+                            reaction.message.guild.voice_client.pause()
+                            await reaction.message.edit(embed=Embed(title='Paused', color=0x800080))
+                        else:
+                            reaction.message.guild.voice_client.resume()
+                            await reaction.message.edit(embed=Embed(title='Resumed', color=0x800080))
+                    else:
+                        raise CommandError('No song is currently playing.')
+                else:
+                    raise CommandError(
+                        'You need to be the song requester to do that.')
 
 
 def setup(bot):
