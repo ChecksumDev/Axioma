@@ -90,75 +90,6 @@ async def get_channel_by_name(guild, name):
 
 
 def init_guild(guild: Guild, db: Database):
-<<<<<<< Updated upstream
-    guild_data = db.guilds.find_one({"id": guild.id})
-    if guild_data is None:
-        db.guilds.insert_one({
-            'id': guild.id,
-            'prefix': '$',
-            'settings': {
-
-                'welcome': {
-                    'enabled': False,
-                    'message': None,
-                    'channel': None,
-                    'dm': False,
-                },
-                'verification': {
-                    'enabled': False,
-                    'channel': None,
-                    'role': None
-                },
-                'leave': {
-                    'enabled': False,
-                    'message': None,
-                    'channel': None,
-                    'role': None,
-                },
-                'modlog': {
-                    'enabled': False,
-                    'channel': None,
-                },
-                'modmail': {  # TODO: Add more modmail settings
-                    'enabled': False,
-                    'channel': None,
-                },
-                'autorole': {
-                    'enabled': False,
-                    'roles': [],
-                },
-                'music': {
-                    'max_volume': 100,
-                    'current_song': None,
-                    'max_queue_size': 20,
-                    'vote_skip': False,
-                    'vote_skip_percentage': 50,
-                    'vote_skip_time': 30,
-                    'shuffle': False,
-                    'repeat': False,
-                    'dj_role': None,
-                }
-            },
-
-            'storage': {
-                'moderation': {
-                    'cases': []
-                },
-                'music': {
-                    'volume': 0.5,
-                    'current_song': None,
-                    'skip_votes': [],
-                    'queue': [],
-                }
-            }
-        })
-        
-        # TODO: Add more guild settings
-        
-        print(f"[Axi] Created guild {guild.name}")
-    else:
-        print(f"[Axi] Guild {guild.name} already exists")
-=======
     db.config.insert_one({
         'id': guild.id,
         'prefix': '$',
@@ -197,4 +128,3 @@ def init_guild(guild: Guild, db: Database):
             'warns': [],
         },
     })
->>>>>>> Stashed changes

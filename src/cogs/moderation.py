@@ -14,14 +14,10 @@ class ModerationCommands(commands.Cog, name="Moderation"):
 
     def __init__(self, bot: Bot, db: Database):
         self.bot = bot
-<<<<<<< Updated upstream
-        self.db = db
-=======
         self.db = db.axi
 
     def _random_string():
         return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
->>>>>>> Stashed changes
 
     @commands.command(name="mute", aliases=["m"], brief="Mute a user", description="Mute a user", usage="mute <user> <reason>")
     @commands.has_guild_permissions(manage_messages=True)
@@ -60,17 +56,6 @@ class ModerationCommands(commands.Cog, name="Moderation"):
         await user.kick(reason=reason)
         await ctx.message.delete()
         await ctx.send(f"{user.mention} has been kicked for {reason}")
-<<<<<<< Updated upstream
-        
-    @commands.command(name="purge", aliases=["cc"], brief="Purge messages", description="Purge messages", usage="purge <amount>")
-    @commands.has_guild_permissions(manage_messages=True)
-    async def purge(self, ctx, amount: int):
-        """Purge messages"""
-        await ctx.message.delete()
-        await ctx.channel.purge(limit=amount)
-        await ctx.send(f"{amount} messages have been deleted by {ctx.author.mention}!", delete_after=5)
-        
-=======
 
     @commands.command(name="purge", aliases=["p"], brief="Purge messages", description="Purge messages", usage="purge <amount>")
     @commands.has_guild_permissions(manage_messages=True)
@@ -133,6 +118,5 @@ class ModerationCommands(commands.Cog, name="Moderation"):
         await ctx.send(f"{user.mention}'s warns have been cleared", delete_after=5)
 
 
->>>>>>> Stashed changes
 def setup(bot):
     bot.add_cog(ModerationCommands(bot, bot.db))
