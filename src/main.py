@@ -173,6 +173,9 @@ class Client(commands.AutoShardedBot):
 
 
 client = Client(intents=Intents.all())
+<<<<<<< Updated upstream
 db = client.db
+=======
+>>>>>>> Stashed changes
 
 client.run(config.token)

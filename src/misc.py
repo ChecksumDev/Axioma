@@ -90,6 +90,7 @@ async def get_channel_by_name(guild, name):
 
 
 def init_guild(guild: Guild, db: Database):
+<<<<<<< Updated upstream
     guild_data = db.guilds.find_one({"id": guild.id})
     if guild_data is None:
         db.guilds.insert_one({
@@ -157,3 +158,43 @@ def init_guild(guild: Guild, db: Database):
         print(f"[Axi] Created guild {guild.name}")
     else:
         print(f"[Axi] Guild {guild.name} already exists")
+=======
+    db.config.insert_one({
+        'id': guild.id,
+        'prefix': '$',
+        'settings': {
+            'verification': {
+                'enabled': False,
+                'channel': None,
+                'role': None
+            },
+            'welcome': {
+                'enabled': False,
+                'message': None,
+                'channel': None,
+                'dm': False,
+            },
+            'leave': {
+                'enabled': False,
+                'message': None,
+                'channel': None,
+                'role': None,
+            },
+            'modlog': {
+                'enabled': False,
+                'channel': None,
+            },
+            'modmail': {  # TODO: Add more modmail settings
+                'enabled': False,
+                'channel': None,
+            },
+            'autorole': {
+                'enabled': False,
+                'roles': [],
+            },
+        },
+        'storage': {
+            'warns': [],
+        },
+    })
+>>>>>>> Stashed changes

@@ -38,7 +38,12 @@ class MusicCommands(commands.Cog, name='Music'):
     def __init__(self, bot: Bot, db: Database, config):
         self.bot = bot
         self.config = config
+<<<<<<< Updated upstream
         self.db = db
+=======
+        self.db = db.axi
+        self.storage = {}
+>>>>>>> Stashed changes
         self.bot.add_listener(self.on_reaction_add, 'on_reaction_add')
 
     def _vote_skip(self, channel, member):
