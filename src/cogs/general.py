@@ -25,9 +25,10 @@ class GeneralCommands(commands.Cog):
         server = ctx.guild
         embed = Embed(
             title=f"{server.name}",
-            description=f"{server.description if server.description else 'No description'}",
+            description=f'{server.description or "No description"}',
             color=0x800080,
         )
+
 
         embed.add_field(name="Owner", value=f"{server.owner}")
         embed.add_field(name="Members", value=f"{server.member_count}")
@@ -99,21 +100,27 @@ class GeneralCommands(commands.Cog):
             score = misc.calculate_trust_score(member)
 
             # create a purple embed with the trustscore, avatar, name and discriminator
-            embed = Embed(title=f"{member.name}#{member.discriminator}'s trustscore",
-                          description=f"This score is automagically determined by automatic checks.", color=0x800080)
+            embed = Embed(
+                title=f"{member.name}#{member.discriminator}'s trustscore",
+                description='This score is automagically determined by automatic checks.',
+                color=0x800080,
+            )
+
             embed.add_field(
                 name="Score", value=f"**{score if score>=0 else 'Unknown'}**", inline=True)
             embed.set_thumbnail(url=member.display_avatar.url)
 
-            embed.set_footer(text=f"Copyright © checksum")
+            embed.set_footer(text='Copyright © checksum')
 
             await ctx.send(embed=embed)
         except MemberNotFound:
-            await ctx.send(f"The specified member could not be found.")
+            await ctx.send('The specified member could not be found.')
 
     @commands.command(name="invite", description="Get the invite link for the bot.", brief="Get the invite link for the bot.", aliases=["inv"], category="General")
     async def invite(self, ctx: commands.Context):
-        await ctx.send(f"Invite me to your server: https://discord.com/oauth2/authorize?client_id=638432564612300842&scope=bot&permissions=8")
+        await ctx.send(
+            'Invite me to your server: https://discord.com/oauth2/authorize?client_id=638432564612300842&scope=bot&permissions=8'
+        )
 
 
 def setup(bot):

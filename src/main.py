@@ -95,12 +95,9 @@ class Client(commands.AutoShardedBot):
             self.db.users.update_one(
                 {'id': member.id}, {'$push': {'guilds': member.guild.id}})
 
-        pass
-
     async def on_member_remove(self, member: Member):
         self.db.users.update_one(
             {'id': member.id}, {'$pull': {'guilds': member.guild.id}})
-        pass
 
     async def on_message(self, message):
         if message.author.bot:
@@ -138,7 +135,9 @@ class Client(commands.AutoShardedBot):
             return
         elif isinstance(error, CheckFailure):
             embed.add_field(
-                name="Error", value=f"You do not have the required permissions.")
+                name="Error", value='You do not have the required permissions.'
+            )
+
             await ctx.send(embed=embed)
             return
         elif isinstance(error, MissingPermissions):
@@ -148,7 +147,10 @@ class Client(commands.AutoShardedBot):
             return
         elif isinstance(error, CommandError):
             embed.add_field(
-                name="Error", value=f"An error has occurred while running the command.")
+                name="Error",
+                value='An error has occurred while running the command.',
+            )
+
             await ctx.send(embed=embed)
 
             embed_log.set_footer(
@@ -162,12 +164,14 @@ class Client(commands.AutoShardedBot):
             return
         elif isinstance(error, NoPrivateMessage):
             embed.add_field(
-                name="Error", value=f"This command cannot be used in private messages.")
+                name="Error",
+                value='This command cannot be used in private messages.',
+            )
+
             await ctx.send(embed=embed)
             return
         elif isinstance(error, DisabledCommand):
-            embed.add_field(
-                name="Error", value=f"This command has been disabled.")
+            embed.add_field(name="Error", value='This command has been disabled.')
             await ctx.send(embed=embed)
             return
 
