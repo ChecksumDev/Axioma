@@ -42,7 +42,7 @@ def calculate_trust_score(user: Member):
     trust_score += (dt.now().year - user.created_at.year) * \
         250 if (dt.now().year - user.created_at.year) > 0 else 0
 
-    if user.public_flags.verified_bot_developer is True or user.public_flags.verified_bot_developer is True:
+    if user.public_flags.verified_bot_developer is True:
         trust_score += 500
 
     if user.public_flags.early_supporter is True:
@@ -76,17 +76,13 @@ def calculate_trust_score(user: Member):
 
 
 async def get_role_by_name(guild, name):
-    for role in guild.roles:
-        if role.name == name:
-            return role
-    return None
+    return next((role for role in guild.roles if role.name == name), None)
 
 
 async def get_channel_by_name(guild, name):
-    for channel in guild.channels:
-        if channel.name == name:
-            return channel
-    return None
+    return next(
+        (channel for channel in guild.channels if channel.name == name), None
+    )
 
 
 def init_guild(guild: Guild, db: Database):
